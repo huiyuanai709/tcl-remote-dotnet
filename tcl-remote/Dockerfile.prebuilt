@@ -4,12 +4,12 @@
 # linux-arm64 asset). Context is the add-on directory:
 #
 #   curl -fL -o tcl-remote \
-#     https://github.com/huiyuanai709/tcl-remote-dotnet/releases/download/v1.0.0/tcl-remote-linux-musl-arm64
+#     https://github.com/huiyuanai709/tcl-remote-dotnet/releases/download/v1.0.1/tcl-remote-linux-musl-arm64
 #   chmod +x tcl-remote
-#   docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.0 .
+#   docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.1 .
 #
 # On an amd64 host, download tcl-remote-linux-musl-x64 and tag the image
-# ghcr.io/huiyuanai709/tcl-remote-amd64:1.0.0 instead.
+# ghcr.io/huiyuanai709/tcl-remote-amd64:1.0.1 instead.
 
 FROM alpine:3.22
 # The musl binary only links musl, but AES dlopens libssl.so.3.

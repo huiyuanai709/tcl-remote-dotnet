@@ -28,7 +28,7 @@ HA Core 容器里的 `rest_command` **不能**用 `127.0.0.1` 访问这个插件
 在仓库根目录用 SDK 多阶段构建（拉的是 Alpine SDK，体积仍不小，适合在开发机上做）：
 
 ```bash
-docker build -f tcl-remote/Dockerfile -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.0 .
+docker build -f tcl-remote/Dockerfile -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.1 .
 ```
 
 amd64 把标签换成 `tcl-remote-amd64`。`uname -m` 决定 musl RID，请在目标架构上构建，不要在 x64 上交叉编译 arm64。
@@ -38,9 +38,9 @@ amd64 把标签换成 `tcl-remote-amd64`。`uname -m` 决定 musl RID，请在�
 ```bash
 cd tcl-remote
 curl -fL -o tcl-remote \
-  https://github.com/huiyuanai709/tcl-remote-dotnet/releases/download/v1.0.0/tcl-remote-linux-musl-arm64
+  https://github.com/huiyuanai709/tcl-remote-dotnet/releases/download/v1.0.1/tcl-remote-linux-musl-arm64
 chmod +x tcl-remote
-docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.0 .
+docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.1 .
 ```
 
 把打好的镜像导入 HA 所在机器的 Docker 后，标签要和 `config.yaml` 里的 `image` 一致，监督器会优先用本地镜像。

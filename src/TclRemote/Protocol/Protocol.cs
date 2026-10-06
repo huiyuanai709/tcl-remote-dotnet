@@ -16,5 +16,5 @@ internal static class Protocol
     public static readonly TimeSpan KeepaliveInterval = TimeSpan.FromSeconds(8);
     public static readonly TimeSpan MaxIdle = TimeSpan.FromSeconds(18);
 
-    public const string AppVersion = "1.0.0";
+    public const string AppVersion = "1.0.1";
 }

@@ -1,5 +1,5 @@
 name: TCL Remote
-version: "1.0.0"
+version: "1.0.1"
 slug: tcl_remote
 description: TCL 电视局域网遥控（.NET Native AOT）。UDP 发现与 TCP 控制走主机网络。
 url: https://github.com/huiyuanai709/tcl-remote-dotnet
@@ -11,7 +11,7 @@ startup: services
 boot: auto
 host_network: true
 apparmor: false
-image: ghcr.io/huiyuanai709/tcl-remote-{arch}:1.0.0
+image: ghcr.io/huiyuanai709/tcl-remote-{arch}:1.0.1
 options:
   tv_ip: ""
   port: 8765

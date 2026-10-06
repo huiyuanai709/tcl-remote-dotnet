@@ -1,0 +1,10 @@
+<Project>
+  <!--
+    .NET runtime async: the C# compiler emits async methods as runtime-async
+    methods (MethodImplOptions.Async) instead of IAsyncStateMachine classes,
+    and the runtime (CoreCLR and NativeAOT) handles suspension/resumption.
+  -->
+  <PropertyGroup>
+    <Features>$(Features);runtime-async=on</Features>
+  </PropertyGroup>
+</Project>

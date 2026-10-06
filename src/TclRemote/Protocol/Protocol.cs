@@ -16,5 +16,10 @@ internal static class Protocol
     public static readonly TimeSpan KeepaliveInterval = TimeSpan.FromSeconds(8);
     public static readonly TimeSpan MaxIdle = TimeSpan.FromSeconds(18);
 
-    public const string AppVersion = "1.0.1";
+    // How long a transmitted frame may stay unacknowledged before the TV is treated as gone.
+    // The happy path returns as soon as the peer ACKs (typically well under this).
+    public static readonly TimeSpan PeerAckTimeout = TimeSpan.FromSeconds(2);
+    public static readonly TimeSpan ReconnectTimeout = TimeSpan.FromSeconds(2);
+
+    public const string AppVersion = "1.0.2";
 }

@@ -72,12 +72,12 @@ JSON 使用源生成，工程打开了 trim / AOT 分析，并在应用项目里
 
 ```bash
 # 开发机构建（多阶段，含 SDK）
-docker build -f tcl-remote/Dockerfile -t ghcr.io/huiyuanai709/tcl-remote-amd64:1.0.1 .
+docker build -f tcl-remote/Dockerfile -t ghcr.io/huiyuanai709/tcl-remote-amd64:1.0.2 .
 
 # 只用发布页上下载的 musl 二进制
 cd tcl-remote
-curl -fL -o tcl-remote https://github.com/huiyuanai709/tcl-remote-dotnet/releases/download/v1.0.1/tcl-remote-linux-musl-arm64
-docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.1 .
+curl -fL -o tcl-remote https://github.com/huiyuanai709/tcl-remote-dotnet/releases/download/v1.0.2/tcl-remote-linux-musl-arm64
+docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.2 .
 ```
 
 打 `v*` tag 时，GitHub Actions 会在对应架构的托管 runner 上发布上述二进制，并推送 `ghcr.io/huiyuanai709/tcl-remote-amd64` 与 `tcl-remote-aarch64`。

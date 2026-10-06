@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 
@@ -109,9 +108,19 @@ internal static class WebServer
         Console.WriteLine($"[*] Web remote listening: http://{host}:{settings.Port}/");
         if (host is "0.0.0.0" or "*" or "+" or "::")
         {
-            var lan = TryLanAddress();
+            var candidates = LanAddress.ListCandidates();
+            var lan = LanAddress.Select(settings.TvIp, candidates);
             if (lan is not null)
+            {
                 Console.WriteLine($"[*] LAN URL: http://{lan}:{settings.Port}/");
+            }
+            else if (candidates.Count > 0)
+            {
+                Console.WriteLine("[*] 没有可用的局域网地址，本机 IPv4：");
+                foreach (var candidate in candidates)
+                    Console.WriteLine($"    {candidate.Name} {candidate.Address}");
+            }
+
             Console.WriteLine("[*] 监听所有网卡。请只在可信网络中使用。");
         }
     }
@@ -177,23 +186,6 @@ internal static class WebServer
         if (IPAddress.TryParse(host, out var address))
             return address;
         throw new ArgumentException($"无效的监听地址: {host}");
-    }
-
-    private static string? TryLanAddress()
-    {
-        try
-        {
-            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            socket.Connect(new IPEndPoint(IPAddress.Parse("8.8.8.8"), 80));
-            if (socket.LocalEndPoint is IPEndPoint endpoint)
-                return endpoint.Address.ToString();
-        }
-        catch (Exception)
-        {
-            return null;
-        }
-
-        return null;
     }
 
     private static string LoadPage()

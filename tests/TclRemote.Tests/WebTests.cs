@@ -90,6 +90,26 @@ public class WebTests
     }
 
     [Fact]
+    public async Task SendReturnsErrorAfterTheTvGoesAway()
+    {
+        await using var fixture = await WebFixture.Start(withTv: true);
+        var ok = await fixture.Client.PostAsync("/api/send", Json("""{"key":"ok","ip":"127.0.0.1"}"""));
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        fixture.Tv!.WaitUntil(() => fixture.Tv.Keys.Count >= 1);
+
+        fixture.Tv.GoAway();
+        await Task.Delay(50);
+
+        var failed = await fixture.Client.PostAsync("/api/send", Json("""{"key":"vol_down","ip":"127.0.0.1"}"""));
+        Assert.Equal(HttpStatusCode.InternalServerError, failed.StatusCode);
+        using var doc = JsonDocument.Parse(await failed.Content.ReadAsStringAsync());
+        Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
+        var error = doc.RootElement.GetProperty("error").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(error));
+        Assert.Contains("失败", error);
+    }
+
+    [Fact]
     public async Task DiscoverRouteReturnsJson()
     {
         await using var fixture = await WebFixture.Start();

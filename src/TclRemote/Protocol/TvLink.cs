@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -12,11 +13,18 @@ internal sealed class TvLink : IDisposable
     private readonly string _phoneId;
     private readonly TimeSpan _maxIdle;
     private readonly Action<string>? _log;
+    private const int IpProtoTcp = 6;
+    private const int TcpInfo = 11;
+    private const int TcpUserTimeout = 18;
+    private const int TcpEstablished = 1;
+    private const int BytesAckedOffset = 120;
+
     private Socket? _socket;
     private NetworkStream? _stream;
     private int _algorithmType = -1;
     private DateTime _lastIo = DateTime.MinValue;
     private bool _everConnected;
+    private bool _loggedOffline;
 
     public TvLink(string ip, int port, string clientName, TimeSpan maxIdle, Action<string>? log)
     {
@@ -55,19 +63,17 @@ internal sealed class TvLink : IDisposable
 
         try
         {
-            if (IsDead())
+            if (IsDead() || !WriteAndConfirm([]))
             {
-                Disconnect();
+                NoteOffline();
                 return;
             }
 
-            // Length 0 is a keepalive. The TV closes an idle session after about 20 seconds.
-            WriteFrame([]);
             _lastIo = DateTime.UtcNow;
         }
         catch (Exception)
         {
-            Disconnect();
+            NoteOffline();
         }
     }
 
@@ -80,29 +86,24 @@ internal sealed class TvLink : IDisposable
             try
             {
                 if (!EnsureConnected())
-                    continue;
+                    return false;
 
                 var payload = _algorithmType == 1 ? AesCipher.Encrypt(plaintext) : plaintext.ToArray();
-                WriteFrame(payload);
-                try
+                if (!WriteAndConfirm(payload))
                 {
-                    // The first write to a socket the TV has already closed can succeed and
-                    // drop the key. A second write then fails; reconnect and send the key again.
-                    WriteFrame([]);
-                }
-                catch (Exception ex)
-                {
-                    LastError = $"连接已断开，准备重试: {ex.Message}";
+                    // A write into a half-open socket succeeds locally. Retry once on a new connection.
+                    LastError = $"电视 {_ip} 无响应";
                     Disconnect();
                     continue;
                 }
 
                 _lastIo = DateTime.UtcNow;
+                _loggedOffline = false;
                 return true;
             }
             catch (Exception ex)
             {
-                LastError = ex.Message;
+                LastError = Unwrap(ex).Message;
                 Disconnect();
             }
         }
@@ -139,7 +140,8 @@ internal sealed class TvLink : IDisposable
                     throw new InvalidOperationException($"无法解析 {_ip}");
             }
 
-            if (_everConnected)
+            var reconnecting = _everConnected;
+            if (reconnecting)
                 _log?.Invoke($"[*] 重新连接 {_ip}:{_port}");
             else
                 _log?.Invoke($"[*] 连接 {_ip}:{_port} ...");
@@ -148,7 +150,9 @@ internal sealed class TvLink : IDisposable
             {
                 NoDelay = true
             };
-            Connect(socket, new IPEndPoint(address, _port), Protocol.ConnectTimeout);
+            var connectTimeout = reconnecting ? Protocol.ReconnectTimeout : Protocol.ConnectTimeout;
+            Connect(socket, new IPEndPoint(address, _port), connectTimeout);
+            ArmDeadPeerTimeout(socket);
             socket.ReceiveTimeout = (int)Protocol.IoTimeout.TotalMilliseconds;
             socket.SendTimeout = (int)Protocol.IoTimeout.TotalMilliseconds;
 
@@ -168,6 +172,7 @@ internal sealed class TvLink : IDisposable
             _algorithmType = info.AlgorithmType;
             _lastIo = DateTime.UtcNow;
             _everConnected = true;
+            _loggedOffline = false;
             _log?.Invoke($"[+] 握手成功，algorithmType={_algorithmType}");
             if (!string.IsNullOrEmpty(info.CapabilityText))
             {
@@ -193,6 +198,94 @@ internal sealed class TvLink : IDisposable
     {
         var stream = _stream ?? throw new IOException("未连接");
         FrameCodec.Write(stream, payload);
+    }
+
+    // A send() into a half-open connection (TV powered off, or the network dropped) is
+    // accepted by the local stack. Poll for FIN/RST, and on Linux also wait until this
+    // frame shows up in TCP_INFO bytes_acked. That returns immediately once the peer
+    // ACKs, and only a silent peer waits out PeerAckTimeout.
+    private bool WriteAndConfirm(ReadOnlySpan<byte> payload)
+    {
+        var tracked = TryReadDelivery(out var ackedBefore, out _);
+        WriteFrame(payload);
+        if (IsDead())
+            return false;
+        if (!tracked)
+            return true;
+        return WaitUntilAcked(ackedBefore, 4 + payload.Length, Protocol.PeerAckTimeout);
+    }
+
+    private bool WaitUntilAcked(ulong ackedBefore, int written, TimeSpan budget)
+    {
+        var target = ackedBefore + (ulong)written;
+        var deadline = Environment.TickCount64 + (long)budget.TotalMilliseconds;
+        while (true)
+        {
+            if (IsDead())
+                return false;
+            if (TryReadDelivery(out var acked, out var state))
+            {
+                if (state != TcpEstablished)
+                    return false;
+                if (acked >= target)
+                    return true;
+            }
+
+            if (Environment.TickCount64 >= deadline)
+                return false;
+            Thread.Sleep(10);
+        }
+    }
+
+    private bool TryReadDelivery(out ulong bytesAcked, out byte state)
+    {
+        bytesAcked = 0;
+        state = 0;
+        var socket = _socket;
+        if (socket is null || !OperatingSystem.IsLinux())
+            return false;
+
+        try
+        {
+            Span<byte> buffer = stackalloc byte[232];
+            var read = socket.GetRawSocketOption(IpProtoTcp, TcpInfo, buffer);
+            if (read < BytesAckedOffset + 8)
+                return false;
+            state = buffer[0];
+            bytesAcked = BinaryPrimitives.ReadUInt64LittleEndian(buffer.Slice(BytesAckedOffset, 8));
+            return true;
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
+    }
+
+    private static void ArmDeadPeerTimeout(Socket socket)
+    {
+        if (!OperatingSystem.IsLinux())
+            return;
+
+        try
+        {
+            Span<byte> value = stackalloc byte[4];
+            BinaryPrimitives.WriteInt32LittleEndian(value, (int)Protocol.PeerAckTimeout.TotalMilliseconds);
+            socket.SetRawSocketOption(IpProtoTcp, TcpUserTimeout, value);
+        }
+        catch (SocketException)
+        {
+            // TCP_INFO still reports whether the frame was acknowledged.
+        }
+    }
+
+    private void NoteOffline()
+    {
+        Disconnect();
+        LastError = $"电视 {_ip} 无响应";
+        if (_loggedOffline)
+            return;
+        _loggedOffline = true;
+        _log?.Invoke($"[!] 电视 {_ip} 无响应，已停止保活");
     }
 
     private bool IsDead()

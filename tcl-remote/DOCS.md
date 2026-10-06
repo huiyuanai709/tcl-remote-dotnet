@@ -28,7 +28,7 @@ HA Core 容器里的 `rest_command` **不能**用 `127.0.0.1` 访问这个插件
 在仓库根目录用 SDK 多阶段构建（拉的是 Alpine SDK，体积仍不小，适合在开发机上做）：
 
 ```bash
-docker build -f tcl-remote/Dockerfile -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.1 .
+docker build -f tcl-remote/Dockerfile -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.2 .
 ```
 
 amd64 把标签换成 `tcl-remote-amd64`。`uname -m` 决定 musl RID，请在目标架构上构建，不要在 x64 上交叉编译 arm64。
@@ -38,9 +38,9 @@ amd64 把标签换成 `tcl-remote-amd64`。`uname -m` 决定 musl RID，请在�
 ```bash
 cd tcl-remote
 curl -fL -o tcl-remote \
-  https://github.com/huiyuanai709/tcl-remote-dotnet/releases/download/v1.0.1/tcl-remote-linux-musl-arm64
+  https://github.com/huiyuanai709/tcl-remote-dotnet/releases/download/v1.0.2/tcl-remote-linux-musl-arm64
 chmod +x tcl-remote
-docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.1 .
+docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.2 .
 ```
 
 把打好的镜像导入 HA 所在机器的 Docker 后，标签要和 `config.yaml` 里的 `image` 一致，监督器会优先用本地镜像。
@@ -66,9 +66,31 @@ docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1
 power
 up down left right ok enter
 back menu home
+source input
+tv tv_home launcher
+hdmi1
 vol_up vol_down mute
 ch_up ch_down
 mouse_left mouse_right
+```
+
+`source`（码 29，别名 `input`）是信源键。在 HDMI 上打开「信源选择」（电视 / HDMI1 / HDMI2 / AV / 多屏互动 / 无线投屏），焦点在当前输入。在 TCL 桌面或主页上会直接回到上次使用的输入。
+
+`hdmi1` 没有单独的按键码，序列是 `home`（19）、等待 2.5 秒、`source`（29）。它回到的是**上次使用的输入**。这台电视只接了 HDMI1，所以上次输入就是 HDMI1。已经在 HDMI1 上再按 `hdmi1`，会先经过主页再回到信源，画面会闪一下。`repeat` 对这个宏无效。等待默认 2500 ms，可用环境变量 `TCL_MACRO_PAUSE_MS` 改成别的毫秒数（0–60000）。
+
+`tv`（别名 `tv_home`、`launcher`）就是 `home`（19），用来从 HDMI 回到 TCL 桌面。
+
+```yaml
+rest_command:
+  tcl_source:
+    url: "http://172.30.32.1:8765/api/send/source"
+    method: GET
+  tcl_hdmi1:
+    url: "http://172.30.32.1:8765/api/send/hdmi1"
+    method: GET
+  tcl_tv:
+    url: "http://172.30.32.1:8765/api/send/tv"
+    method: GET
 ```
 
 ## 在线状态

@@ -85,6 +85,13 @@ public class ProtocolTests
     [InlineData("back", 16)]
     [InlineData("menu", 18)]
     [InlineData("home", 19)]
+    [InlineData("tv", 19)]
+    [InlineData("tv_home", 19)]
+    [InlineData("tv-home", 19)]
+    [InlineData("launcher", 19)]
+    [InlineData("source", 29)]
+    [InlineData("input", 29)]
+    [InlineData("SOURCE", 29)]
     [InlineData("vol_up", 21)]
     [InlineData("VOL-UP", 21)]
     [InlineData("vol_down", 22)]
@@ -109,6 +116,53 @@ public class ProtocolTests
     public void RejectsUnknownKeys(string key)
     {
         Assert.False(KeyTable.TryResolve(key, out _));
+    }
+
+    [Fact]
+    public void Hdmi1IsAMacroNotASingleKey()
+    {
+        Assert.False(KeyTable.TryResolve("hdmi1", out _));
+        Assert.Equal(29, KeyTable.ToJsonMap()["source"]);
+        Assert.Equal(29, KeyTable.ToJsonMap()["input"]);
+        Assert.Equal(19, KeyTable.ToJsonMap()["tv"]);
+        Assert.DoesNotContain("hdmi1", KeyTable.ToJsonMap().Keys);
+    }
+
+    [Fact]
+    public void Hdmi1ExpandsHomeThenSourceWithAConfigurablePause()
+    {
+        Assert.Equal(TimeSpan.FromMilliseconds(2500), MacroTable.DefaultPause);
+        Assert.True(MacroTable.TryExpand("hdmi1", pauseOverride: null, out var steps));
+        Assert.Equal(["home", "source"], steps.Select(static step => step.Key).ToArray());
+        Assert.Equal([19, 29], steps.Select(static step => step.Code).ToArray());
+        Assert.Equal(TimeSpan.Zero, steps[0].PauseBefore);
+        Assert.Equal(TimeSpan.FromMilliseconds(2500), steps[1].PauseBefore);
+
+        Assert.True(MacroTable.TryExpand("HDMI1", TimeSpan.FromMilliseconds(40), out var overridden));
+        Assert.Equal([19, 29], overridden.Select(static step => step.Code).ToArray());
+        Assert.Equal(TimeSpan.Zero, overridden[0].PauseBefore);
+        Assert.Equal(TimeSpan.FromMilliseconds(40), overridden[1].PauseBefore);
+    }
+
+    [Theory]
+    [InlineData("0", 0)]
+    [InlineData("2500", 2500)]
+    [InlineData("60000", 60000)]
+    public void ParsesMacroPause(string text, int milliseconds)
+    {
+        Assert.True(MacroTable.TryParsePause(text, out var pause));
+        Assert.Equal(TimeSpan.FromMilliseconds(milliseconds), pause);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("nope")]
+    [InlineData("-1")]
+    [InlineData("60001")]
+    public void RejectsMacroPause(string? text)
+    {
+        Assert.False(MacroTable.TryParsePause(text, out _));
     }
 
     [Fact]

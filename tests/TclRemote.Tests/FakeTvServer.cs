@@ -42,6 +42,21 @@ internal sealed class FakeTvServer : IDisposable
             Thread.Sleep(10);
     }
 
+    public void GoAway()
+    {
+        _cts.Cancel();
+        try
+        {
+            _listener.Stop();
+        }
+        catch (Exception)
+        {
+            // Already stopped.
+        }
+
+        DropAll();
+    }
+
     public void DropAll()
     {
         List<TcpClient> copy;

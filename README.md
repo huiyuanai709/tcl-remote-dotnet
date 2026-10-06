@@ -21,7 +21,9 @@ tcl-remote serve --ip 192.168.5.9 --host 127.0.0.1 --port 8765
 | `shell` | 交互终端 |
 | `serve` | Web 页面和 HTTP API |
 
-按键：`power`、`up` `down` `left` `right` `ok` `enter`、`back` `menu` `home`、`vol_up` `vol_down` `mute`、`ch_up` `ch_down`、`mouse_left` `mouse_right`。
+按键：`power`、`up` `down` `left` `right` `ok` `enter`、`back` `menu` `home`、`source`（别名 `input`）、`tv`（别名 `tv_home`、`launcher`）、`vol_up` `vol_down` `mute`、`ch_up` `ch_down`、`mouse_left` `mouse_right`。`hdmi1` 是宏：`home`，等待 2.5 秒，再 `source`。
+
+`source` 在 HDMI 上打开电视的信源选择，在 TCL 桌面上则直接回到上次的输入。`hdmi1` 回到的也是上次使用的输入（这台 55F8 只接了 HDMI1，所以就是 HDMI1）。已经在 HDMI1 上再按 `hdmi1`，会先回到主页再进信源。`tv` 从 HDMI 回到 TCL 桌面。宏忽略 `repeat`。步骤之间的等待默认 2500 ms，可用环境变量 `TCL_MACRO_PAUSE_MS` 修改。
 
 环境变量：`TCL_TV_IP`、`TCL_HOST`、`TCL_PORT`、`TCL_NAME`。Home Assistant 插件还会读 `/data/options.json`（路径可用 `TCL_OPTIONS_FILE` 覆盖）。
 
@@ -72,12 +74,12 @@ JSON 使用源生成，工程打开了 trim / AOT 分析，并在应用项目里
 
 ```bash
 # 开发机构建（多阶段，含 SDK）
-docker build -f tcl-remote/Dockerfile -t ghcr.io/huiyuanai709/tcl-remote-amd64:1.0.1 .
+docker build -f tcl-remote/Dockerfile -t ghcr.io/huiyuanai709/tcl-remote-amd64:1.0.2 .
 
 # 只用发布页上下载的 musl 二进制
 cd tcl-remote
-curl -fL -o tcl-remote https://github.com/huiyuanai709/tcl-remote-dotnet/releases/download/v1.0.1/tcl-remote-linux-musl-arm64
-docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.1 .
+curl -fL -o tcl-remote https://github.com/huiyuanai709/tcl-remote-dotnet/releases/download/v1.0.2/tcl-remote-linux-musl-arm64
+docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.2 .
 ```
 
 打 `v*` tag 时，GitHub Actions 会在对应架构的托管 runner 上发布上述二进制，并推送 `ghcr.io/huiyuanai709/tcl-remote-amd64` 与 `tcl-remote-aarch64`。

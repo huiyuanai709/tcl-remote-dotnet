@@ -31,12 +31,23 @@ public class WebTests
             Assert.True(doc.RootElement.GetProperty("ok").GetBoolean());
             Assert.Equal(21, doc.RootElement.GetProperty("keys").GetProperty("vol_up").GetInt32());
             Assert.Equal(15, doc.RootElement.GetProperty("keys").GetProperty("enter").GetInt32());
+            Assert.Equal(29, doc.RootElement.GetProperty("keys").GetProperty("source").GetInt32());
+            Assert.Equal(29, doc.RootElement.GetProperty("keys").GetProperty("input").GetInt32());
+            Assert.Equal(19, doc.RootElement.GetProperty("keys").GetProperty("tv").GetInt32());
+            Assert.False(doc.RootElement.GetProperty("keys").TryGetProperty("hdmi1", out _));
             Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("default_ip").ValueKind);
         }
 
         var page = await http.GetStringAsync("/");
         Assert.Contains("data-key=\"vol_up\"", page);
         Assert.Contains("/api/send", page);
+        Assert.Contains("信号源", page);
+        var power = page.IndexOf("data-key=\"power\"", StringComparison.Ordinal);
+        var source = page.IndexOf("data-key=\"source\"", StringComparison.Ordinal);
+        var hdmi = page.IndexOf("data-key=\"hdmi1\"", StringComparison.Ordinal);
+        var tv = page.IndexOf("data-key=\"tv\"", StringComparison.Ordinal);
+        var up = page.IndexOf("data-key=\"up\"", StringComparison.Ordinal);
+        Assert.True(power >= 0 && power < source && source < hdmi && hdmi < tv && tv < up);
     }
 
     [Fact]
@@ -90,6 +101,64 @@ public class WebTests
     }
 
     [Fact]
+    public async Task SendReturnsErrorAfterTheTvGoesAway()
+    {
+        await using var fixture = await WebFixture.Start(withTv: true);
+        var ok = await fixture.Client.PostAsync("/api/send", Json("""{"key":"ok","ip":"127.0.0.1"}"""));
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        fixture.Tv!.WaitUntil(() => fixture.Tv.Keys.Count >= 1);
+
+        fixture.Tv.GoAway();
+        await Task.Delay(50);
+
+        var failed = await fixture.Client.PostAsync("/api/send", Json("""{"key":"vol_down","ip":"127.0.0.1"}"""));
+        Assert.Equal(HttpStatusCode.InternalServerError, failed.StatusCode);
+        using var doc = JsonDocument.Parse(await failed.Content.ReadAsStringAsync());
+        Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
+        var error = doc.RootElement.GetProperty("error").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(error));
+        Assert.Contains("失败", error);
+    }
+
+    [Fact]
+    public async Task RoutesSourceHdmi1AndTv()
+    {
+        var waits = new List<TimeSpan>();
+        await using var fixture = await WebFixture.Start(
+            withTv: true,
+            wait: waits.Add,
+            macroPause: TimeSpan.FromMilliseconds(1800));
+        using var http = fixture.Client;
+
+        var source = await http.PostAsync("/api/send", Json("""{"key":"source","ip":"127.0.0.1"}"""));
+        Assert.Equal(HttpStatusCode.OK, source.StatusCode);
+
+        var input = await http.GetAsync("/api/send/input?ip=127.0.0.1");
+        Assert.Equal(HttpStatusCode.OK, input.StatusCode);
+
+        var tv = await http.PostAsync("/api/send/tv?ip=127.0.0.1", new StringContent("", Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.OK, tv.StatusCode);
+
+        var hdmi = await http.PostAsync("/api/send", Json("""{"key":"hdmi1","ip":"127.0.0.1","repeat":5}"""));
+        Assert.Equal(HttpStatusCode.OK, hdmi.StatusCode);
+        using (var doc = JsonDocument.Parse(await hdmi.Content.ReadAsStringAsync()))
+        {
+            Assert.True(doc.RootElement.GetProperty("ok").GetBoolean());
+            Assert.Equal("hdmi1", doc.RootElement.GetProperty("key").GetString());
+            Assert.Equal(1, doc.RootElement.GetProperty("repeat").GetInt32());
+        }
+
+        var launcher = await http.GetAsync("/api/send/launcher?ip=127.0.0.1");
+        Assert.Equal(HttpStatusCode.OK, launcher.StatusCode);
+
+        fixture.Tv!.WaitUntil(() => fixture.Tv.Keys.Count >= 6);
+        Assert.Equal(
+            ["149>>29", "149>>29", "149>>19", "149>>19", "149>>29", "149>>19"],
+            fixture.Tv.Keys.ToArray());
+        Assert.Equal([TimeSpan.FromMilliseconds(1800)], waits);
+    }
+
+    [Fact]
     public async Task DiscoverRouteReturnsJson()
     {
         await using var fixture = await WebFixture.Start();
@@ -109,7 +178,7 @@ public class WebTests
         public required WebApplication App { get; init; }
         public FakeTvServer? Tv { get; init; }
 
-        public static async Task<WebFixture> Start(bool withTv = false)
+        public static async Task<WebFixture> Start(bool withTv = false, Action<TimeSpan>? wait = null, TimeSpan? macroPause = null)
         {
             var tv = withTv ? new FakeTvServer() : null;
             var session = new RemoteSession("web-test", new SessionOptions
@@ -119,6 +188,8 @@ public class WebTests
                 MaxIdle = TimeSpan.FromHours(1),
                 KeyInterval = TimeSpan.Zero,
                 AutoDiscoverTimeout = TimeSpan.FromMilliseconds(200),
+                Wait = wait,
+                MacroPause = macroPause,
             });
             var app = WebServer.Build(new ServeSettings(null, "127.0.0.1", 0, "web-test"), session);
             await app.StartAsync();

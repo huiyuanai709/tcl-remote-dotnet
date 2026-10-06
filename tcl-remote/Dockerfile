@@ -1,7 +1,7 @@
 # Home Assistant add-on image.
 #
 # Build from the repository root (this context includes the C# project):
-#   docker build -f tcl-remote/Dockerfile -t ghcr.io/huiyuanai709/tcl-remote-amd64:1.0.1 .
+#   docker build -f tcl-remote/Dockerfile -t ghcr.io/huiyuanai709/tcl-remote-amd64:1.0.2 .
 #
 # The SDK stage is Alpine, so `dotnet publish -r linux-musl-*` is a native
 # musl build rather than a glibc-to-musl cross compile. The runtime image is

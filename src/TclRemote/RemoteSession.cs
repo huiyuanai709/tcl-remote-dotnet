@@ -8,6 +8,12 @@ internal sealed class SessionOptions
     public TimeSpan KeyInterval { get; init; } = Protocol.KeyInterval;
     public TimeSpan AutoDiscoverTimeout { get; init; } = TimeSpan.FromSeconds(2);
     public Action<string>? Log { get; init; }
+
+    // Null uses the pause written in the macro table (hdmi1 defaults to 2500 ms).
+    public TimeSpan? MacroPause { get; init; }
+
+    // Null sleeps on the calling thread. Tests pass a recorder so the wait is not real.
+    public Action<TimeSpan>? Wait { get; init; }
 }
 
 internal readonly record struct SendOutcome(bool Ok, int StatusCode, string? Error, string? Ip, string Key, int Repeat)
@@ -71,6 +77,9 @@ internal sealed class RemoteSession : IDisposable
         if (string.IsNullOrWhiteSpace(key))
             return SendOutcome.Fail(400, "缺少 key", key ?? "", repeat);
 
+        if (MacroTable.TryExpand(key, _options.MacroPause, out var steps))
+            return SendMacro(key, ip, repeat, steps);
+
         if (!KeyTable.TryResolve(key, out var code))
             return SendOutcome.Fail(400, $"未知按键: {key}", key, repeat);
 
@@ -78,16 +87,8 @@ internal sealed class RemoteSession : IDisposable
         if (effective < 1)
             return SendOutcome.Fail(400, "repeat 必须大于 0", key, repeat);
 
-        var target = string.IsNullOrWhiteSpace(ip) ? DefaultIp : ip.Trim();
-        if (string.IsNullOrWhiteSpace(target))
-        {
-            var found = DiscoveryClient.Scan(_options.AutoDiscoverTimeout);
-            if (found.Count == 0)
-                return SendOutcome.Fail(500, "未指定电视 IP，且自动发现没有找到设备", key, effective);
-            target = found[0].Ip;
-            if (string.IsNullOrWhiteSpace(DefaultIp))
-                DefaultIp = target;
-        }
+        if (!TryPickTarget(ip, key, effective, out var target, out var failure))
+            return failure;
 
         var link = GetLink(target);
         bool ok;
@@ -98,6 +99,68 @@ internal sealed class RemoteSession : IDisposable
             return SendOutcome.Fail(500, link.LastError ?? "发送失败，连接已重置", key, effective, target);
 
         return SendOutcome.Success(target, key, effective);
+    }
+
+    private SendOutcome SendMacro(string key, string? ip, int repeat, MacroStep[] steps)
+    {
+        if (repeat < 1)
+            return SendOutcome.Fail(400, "repeat 必须大于 0", key, repeat);
+
+        // Macros run once. repeat does not replay the sequence.
+        if (!TryPickTarget(ip, key, 1, out var target, out var failure))
+            return failure;
+
+        var link = GetLink(target);
+        lock (link.Gate)
+        {
+            foreach (var step in steps)
+            {
+                if (step.PauseBefore > TimeSpan.Zero)
+                {
+                    _options.Log?.Invoke($"[*] 宏 {key}：等待 {step.PauseBefore.TotalMilliseconds:0} ms 后发送 {step.Key}");
+                    Wait(step.PauseBefore);
+                }
+
+                if (!link.SendKey(step.Code, 1, _options.KeyInterval))
+                    return SendOutcome.Fail(500, link.LastError ?? "发送失败，连接已重置", key, 1, target);
+            }
+        }
+
+        return SendOutcome.Success(target, key, 1);
+    }
+
+    private void Wait(TimeSpan delay)
+    {
+        if (_options.Wait is not null)
+        {
+            _options.Wait(delay);
+            return;
+        }
+
+        Thread.Sleep(delay);
+    }
+
+    private bool TryPickTarget(string? ip, string key, int repeat, out string target, out SendOutcome failure)
+    {
+        target = "";
+        failure = default;
+        var chosen = string.IsNullOrWhiteSpace(ip) ? DefaultIp : ip.Trim();
+        if (string.IsNullOrWhiteSpace(chosen))
+        {
+            var found = DiscoveryClient.Scan(_options.AutoDiscoverTimeout);
+            if (found.Count == 0)
+            {
+                failure = SendOutcome.Fail(500, "未指定电视 IP，且自动发现没有找到设备", key, repeat);
+                return false;
+            }
+
+            chosen = found[0].Ip;
+            if (string.IsNullOrWhiteSpace(DefaultIp))
+                DefaultIp = chosen;
+        }
+
+        target = chosen;
+        return true;
     }
 
     public void Dispose()

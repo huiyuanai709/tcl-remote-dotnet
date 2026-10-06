@@ -1,0 +1,28 @@
+name: TCL Remote
+version: "1.0.0"
+slug: tcl_remote
+description: TCL 电视局域网遥控（.NET Native AOT）。UDP 发现与 TCP 控制走主机网络。
+url: https://github.com/huiyuanai709/tcl-remote-dotnet
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: services
+boot: auto
+host_network: true
+apparmor: false
+image: ghcr.io/huiyuanai709/tcl-remote-{arch}:1.0.0
+options:
+  tv_ip: ""
+  port: 8765
+  client_name: HA TCL Remote
+schema:
+  tv_ip: str?
+  port: port
+  client_name: str
+ports:
+  8765/tcp: 8765
+ports_description:
+  8765/tcp: Web 遥控与 HTTP API（host 网络下实际以选项 port 为准）
+webui: http://[HOST]:[PORT:8765]/
+homeassistant_api: false

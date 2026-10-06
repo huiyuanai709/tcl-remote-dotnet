@@ -1,0 +1,13 @@
+bin/
+obj/
+out/
+publish/
+dist/
+TestResults/
+.vs/
+*.user
+*.suo
+.idea/
+*.DotSettings.user
+tcl-remote/tcl-remote
+*.tar.gz

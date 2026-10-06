@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TCL Remote</title>
+  <style>
+    :root {
+      --ink: #12110f;
+      --panel: #f4f0e8;
+      --panel-2: #e8e1d2;
+      --line: #2e2a24;
+      --quiet: #786f61;
+      --red: #db3f32;
+      --green: #20815b;
+      --amber: #c89127;
+      --button: #24211d;
+      --button-2: #39342d;
+      --button-text: #fffaf0;
+      --shadow: 0 18px 50px rgba(30, 25, 18, .22);
+      color-scheme: light;
+      font-family: ui-serif, Georgia, "Songti SC", "Noto Serif CJK SC", serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(18, 17, 15, .05) 1px, transparent 1px) 0 0 / 28px 28px,
+        linear-gradient(rgba(18, 17, 15, .04) 1px, transparent 1px) 0 0 / 28px 28px,
+        #d8cebb;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+
+    main {
+      width: min(980px, 100%);
+      display: grid;
+      grid-template-columns: minmax(300px, 420px) minmax(280px, 1fr);
+      gap: 22px;
+      align-items: stretch;
+    }
+
+    .remote {
+      background: var(--panel);
+      border: 2px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+      min-height: 640px;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      gap: 18px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .remote::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at 18% 10%, rgba(200, 145, 39, .14), transparent 28%),
+                  linear-gradient(135deg, transparent 0 72%, rgba(32, 129, 91, .1) 72% 100%);
+    }
+
+    .remote > * { position: relative; }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 16px;
+      border-bottom: 2px solid var(--line);
+      padding-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .sub {
+      display: block;
+      margin-top: 6px;
+      font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: var(--quiet);
+      text-transform: uppercase;
+    }
+
+    .status {
+      min-width: 86px;
+      border: 2px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 10px;
+      font: 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      text-align: center;
+      background: #fff9eb;
+    }
+
+    .status.ok { color: var(--green); }
+    .status.busy { color: var(--amber); }
+    .status.bad { color: var(--red); }
+
+    .bar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+    }
+
+    input {
+      width: 100%;
+      height: 42px;
+      border: 2px solid var(--line);
+      border-radius: 6px;
+      background: #fffaf0;
+      color: var(--ink);
+      padding: 0 12px;
+      font: 15px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    button {
+      border: 2px solid var(--line);
+      border-radius: 7px;
+      background: var(--button);
+      color: var(--button-text);
+      min-height: 46px;
+      padding: 0 14px;
+      font: 700 15px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      cursor: pointer;
+      box-shadow: 0 4px 0 var(--line);
+      transform: translateY(0);
+      transition: transform .08s ease, box-shadow .08s ease, background .12s ease;
+      touch-action: manipulation;
+      user-select: none;
+    }
+
+    button:hover { background: var(--button-2); }
+    button:active, button.pressed {
+      transform: translateY(4px);
+      box-shadow: 0 0 0 var(--line);
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: .62;
+    }
+
+    .power {
+      width: 58px;
+      height: 58px;
+      min-height: 58px;
+      border-radius: 50%;
+      background: var(--red);
+      font-size: 22px;
+    }
+
+    .pad {
+      width: min(280px, 100%);
+      aspect-ratio: 1;
+      margin: 4px auto 0;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .pad button {
+      min-height: 0;
+      font-size: 24px;
+    }
+
+    .ok {
+      border-radius: 50%;
+      background: var(--green);
+      font-size: 18px !important;
+    }
+
+    .spacer {
+      border: 2px dashed rgba(46, 42, 36, .18);
+      border-radius: 7px;
+    }
+
+    .rows {
+      display: grid;
+      gap: 12px;
+    }
+
+    .pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .pair button {
+      min-height: 56px;
+    }
+
+    .muted {
+      background: #fff9eb;
+      color: var(--ink);
+    }
+
+    aside {
+      background: rgba(244, 240, 232, .76);
+      border: 2px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 16px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.1;
+    }
+
+    .devices {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .device {
+      width: 100%;
+      text-align: left;
+      min-height: 64px;
+      background: #fff9eb;
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .device strong {
+      display: block;
+      font: 700 14px/1.25 ui-serif, Georgia, "Songti SC", serif;
+      margin-bottom: 5px;
+    }
+
+    .log {
+      border: 2px solid var(--line);
+      border-radius: 6px;
+      background: #181713;
+      color: #f8efd9;
+      min-height: 220px;
+      max-height: 330px;
+      overflow: auto;
+      padding: 12px;
+      font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
+    .quick {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .quick button {
+      min-height: 42px;
+      font-size: 13px;
+    }
+
+    @media (max-width: 760px) {
+      body { padding: 12px; place-items: start center; }
+      main { grid-template-columns: 1fr; }
+      .remote { min-height: auto; }
+      aside { min-height: 360px; }
+      h1 { font-size: 24px; }
+      .pad { width: min(260px, 100%); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="remote" aria-label="TCL remote">
+      <header>
+        <div>
+          <h1>TCL Remote</h1>
+          <span class="sub">local tcp control</span>
+        </div>
+        <button class="power" data-key="power" title="Power">⏻</button>
+      </header>
+
+      <div class="bar">
+        <input id="ip" inputmode="decimal" autocomplete="off" placeholder="192.168.2.136">
+        <button id="discover">扫描</button>
+      </div>
+
+      <div class="pad">
+        <div class="spacer"></div>
+        <button data-key="up" title="Up">▲</button>
+        <div class="spacer"></div>
+        <button data-key="left" title="Left">◀</button>
+        <button class="ok" data-key="ok" title="OK">OK</button>
+        <button data-key="right" title="Right">▶</button>
+        <div class="spacer"></div>
+        <button data-key="down" title="Down">▼</button>
+        <div class="spacer"></div>
+      </div>
+
+      <div class="rows">
+        <div class="pair">
+          <button data-key="back">BACK</button>
+          <button data-key="home">HOME</button>
+        </div>
+        <div class="pair">
+          <button data-key="menu">MENU</button>
+          <button data-key="mute">MUTE</button>
+        </div>
+        <div class="pair">
+          <button data-key="vol_down">VOL −</button>
+          <button data-key="vol_up">VOL +</button>
+        </div>
+        <div class="pair">
+          <button data-key="ch_down">CH −</button>
+          <button data-key="ch_up">CH +</button>
+        </div>
+      </div>
+    </section>
+
+    <aside>
+      <header>
+        <div>
+          <h2>设备</h2>
+          <span class="sub">discovery and activity</span>
+        </div>
+        <div id="status" class="status">READY</div>
+      </header>
+
+      <div class="quick">
+        <button class="muted" data-repeat="3" data-key="vol_down">−3</button>
+        <button class="muted" data-key="mute">静音</button>
+        <button class="muted" data-repeat="3" data-key="vol_up">+3</button>
+      </div>
+
+      <div>
+        <div id="devices" class="devices"></div>
+        <div id="log" class="log"></div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const ipInput = document.querySelector("#ip");
+    const statusEl = document.querySelector("#status");
+    const logEl = document.querySelector("#log");
+    const devicesEl = document.querySelector("#devices");
+    const buttons = [...document.querySelectorAll("[data-key]")];
+
+    function setStatus(text, mode = "") {
+      statusEl.textContent = text;
+      statusEl.className = `status ${mode}`.trim();
+    }
+
+    function log(line) {
+      const time = new Date().toLocaleTimeString();
+      logEl.textContent = `[${time}] ${line}\n` + logEl.textContent;
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        headers: { "Content-Type": "application/json" },
+        ...options
+      });
+      const data = await response.json();
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+      return data;
+    }
+
+    async function sendKey(key, repeat = 1, button = null) {
+      const ip = ipInput.value.trim();
+      setStatus("SEND", "busy");
+      button?.classList.add("pressed");
+      buttons.forEach(item => item.disabled = true);
+      try {
+        const data = await api("/api/send", {
+          method: "POST",
+          body: JSON.stringify({ key, repeat, ip })
+        });
+        if (data.ip && !ipInput.value.trim()) ipInput.value = data.ip;
+        setStatus("OK", "ok");
+        log(`${data.ip || ip} ← ${key}${repeat > 1 ? ` x${repeat}` : ""}`);
+      } catch (error) {
+        setStatus("ERR", "bad");
+        log(error.message);
+      } finally {
+        buttons.forEach(item => item.disabled = false);
+        setTimeout(() => button?.classList.remove("pressed"), 120);
+      }
+    }
+
+    async function discoverDevices() {
+      setStatus("SCAN", "busy");
+      devicesEl.textContent = "";
+      try {
+        const data = await api("/api/discover?timeout=3");
+        if (data.default_ip) ipInput.value = data.default_ip;
+        if (!data.devices.length) {
+          devicesEl.textContent = "未发现设备";
+          log("扫描结束，没有发现电视");
+        } else {
+          data.devices.forEach(device => {
+            const button = document.createElement("button");
+            button.className = "device";
+            button.innerHTML = `<strong>${escapeHtml(device.name || "TCL TV")}</strong>${escapeHtml(device.ip)} · ${escapeHtml(device.wifi_mac || "")}`;
+            button.addEventListener("click", () => {
+              ipInput.value = device.ip;
+              log(`选择设备 ${device.ip}`);
+            });
+            devicesEl.appendChild(button);
+          });
+          log(`发现 ${data.devices.length} 台设备`);
+        }
+        setStatus("READY", "ok");
+      } catch (error) {
+        setStatus("ERR", "bad");
+        log(error.message);
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      }[char]));
+    }
+
+    buttons.forEach(button => {
+      button.addEventListener("click", () => {
+        sendKey(button.dataset.key, Number(button.dataset.repeat || 1), button);
+      });
+    });
+
+    document.querySelector("#discover").addEventListener("click", discoverDevices);
+
+    window.addEventListener("keydown", event => {
+      const map = {
+        ArrowUp: "up",
+        ArrowDown: "down",
+        ArrowLeft: "left",
+        ArrowRight: "right",
+        Enter: "ok",
+        Escape: "back",
+        Home: "home",
+        "+": "vol_up",
+        "-": "vol_down",
+        m: "mute",
+        M: "mute"
+      };
+      const key = map[event.key];
+      if (!key) return;
+      event.preventDefault();
+      sendKey(key);
+    });
+
+    api("/api/keys")
+      .then(data => {
+        if (data.default_ip) ipInput.value = data.default_ip;
+        log("界面已连接本地服务");
+      })
+      .catch(error => log(error.message));
+  </script>
+</body>
+</html>

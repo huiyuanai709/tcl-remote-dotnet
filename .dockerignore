@@ -1,0 +1,11 @@
+**/.git
+**/.vs
+**/.idea
+**/bin
+**/obj
+**/out
+**/publish
+**/dist
+**/TestResults
+**/*.user
+tcl-remote/tcl-remote

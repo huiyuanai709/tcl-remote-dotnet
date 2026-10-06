@@ -1,0 +1,25 @@
+# Add-on image from a release binary. No .NET SDK.
+#
+# Use the musl build that matches the machine (not the glibc linux-x64 /
+# linux-arm64 asset). Context is the add-on directory:
+#
+#   curl -fL -o tcl-remote \
+#     https://github.com/huiyuanai709/tcl-remote-dotnet/releases/download/v1.0.0/tcl-remote-linux-musl-arm64
+#   chmod +x tcl-remote
+#   docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.0 .
+#
+# On an amd64 host, download tcl-remote-linux-musl-x64 and tag the image
+# ghcr.io/huiyuanai709/tcl-remote-amd64:1.0.0 instead.
+
+FROM alpine:3.22
+# The musl binary only links musl, but AES dlopens libssl.so.3.
+RUN apk add --no-cache libssl3
+COPY tcl-remote /usr/bin/tcl-remote
+COPY run.sh /run.sh
+RUN chmod +x /usr/bin/tcl-remote /run.sh \
+    && /usr/bin/tcl-remote --version
+LABEL org.opencontainers.image.source="https://github.com/huiyuanai709/tcl-remote-dotnet" \
+      org.opencontainers.image.description="TCL TV LAN remote Home Assistant add-on" \
+      org.opencontainers.image.licenses="MIT"
+EXPOSE 8765
+ENTRYPOINT ["/run.sh"]

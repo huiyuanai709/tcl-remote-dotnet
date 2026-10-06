@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          dotnet-quality: preview
+
+      - name: Test
+        run: dotnet test TclRemote.slnx -c Release --nologo
+
+      - name: Native AOT prerequisites
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: Publish linux-x64
+        run: dotnet publish src/TclRemote/TclRemote.csproj -c Release -r linux-x64 -o "$RUNNER_TEMP/tcl-remote" --nologo
+
+      - name: Smoke
+        run: |
+          set -eu
+          bin="$RUNNER_TEMP/tcl-remote/tcl-remote"
+          "$bin" --help
+          "$bin" --version
+          "$bin" serve --host 127.0.0.1 --port 8765 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          for _ in $(seq 1 50); do
+            if curl -sf "http://127.0.0.1:8765/api/health"; then
+              break
+            fi
+            sleep 0.1
+          done
+          echo
+          curl -sf "http://127.0.0.1:8765/api/health"
+          echo
+          curl -sf "http://127.0.0.1:8765/api/keys"
+          echo
+          curl -sf -o /dev/null -w "page:%{http_code}\n" "http://127.0.0.1:8765/"
+
+  addon-image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Alpine add-on image
+        run: docker build -f tcl-remote/Dockerfile -t tcl-remote-addon:ci .

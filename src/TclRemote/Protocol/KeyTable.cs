@@ -16,11 +16,16 @@ internal static class KeyTable
         ("back", 16),
         ("menu", 18),
         ("home", 19),
+        ("tv", 19),
+        ("tv_home", 19),
+        ("launcher", 19),
         ("vol_up", 21),
         ("vol_down", 22),
         ("mute", 23),
         ("ch_up", 27),
         ("ch_down", 28),
+        ("source", 29),
+        ("input", 29),
         ("mouse_left", 39),
         ("mouse_right", 40),
     ];
@@ -43,7 +48,7 @@ internal static class KeyTable
         if (string.IsNullOrWhiteSpace(key))
             return false;
 
-        var normalized = key.Trim().Replace('-', '_');
+        var normalized = Canon(key);
         if (IsAllDigits(normalized))
         {
             if (!int.TryParse(normalized, NumberStyles.None, CultureInfo.InvariantCulture, out code))
@@ -53,6 +58,8 @@ internal static class KeyTable
 
         return Map.TryGetValue(normalized, out code);
     }
+
+    public static string Canon(string key) => key.Trim().Replace('-', '_');
 
     public static string DescribeKnownKeys()
     {

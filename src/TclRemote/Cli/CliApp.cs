@@ -64,7 +64,7 @@ internal static partial class CliApp
             return 1;
 
         var name = AppSettings.ResolveName(cli, "TCL Remote");
-        using var session = new RemoteSession(name, new SessionOptions { Log = Console.WriteLine });
+        using var session = new RemoteSession(name, ConsoleSession());
         var outcome = session.Send(cli.Key, ip, cli.Repeat, clampRepeat: false);
         if (!outcome.Ok)
         {
@@ -84,7 +84,7 @@ internal static partial class CliApp
             return 1;
 
         var name = AppSettings.ResolveName(cli, "TCL Remote");
-        using var session = new RemoteSession(name, new SessionOptions { Log = Console.WriteLine });
+        using var session = new RemoteSession(name, ConsoleSession());
         if (!session.TryConnect(ip, out var connectError))
         {
             Console.Error.WriteLine($"[!] {connectError}");
@@ -121,7 +121,7 @@ internal static partial class CliApp
 
             if (line == "keys")
             {
-                var names = KeyTable.Entries.Select(static entry => entry.Name).ToList();
+                var names = KeyTable.Entries.Select(static entry => entry.Name).Concat(MacroTable.Names).ToList();
                 for (var i = 0; i < names.Count; i += 4)
                     Console.WriteLine("  " + string.Join("  ", names.Skip(i).Take(4).Select(static name => name.PadRight(14))));
                 continue;
@@ -158,7 +158,7 @@ internal static partial class CliApp
     private static int Serve(ParsedCli cli)
     {
         var settings = AppSettings.ResolveServe(cli);
-        using var session = new RemoteSession(settings.ClientName, new SessionOptions { Log = Console.WriteLine });
+        using var session = new RemoteSession(settings.ClientName, ConsoleSession());
         session.DefaultIp = settings.TvIp;
         var app = WebServer.Build(settings, session);
         WebServer.PrintListening(settings);
@@ -211,6 +211,18 @@ internal static partial class CliApp
         return devices[0].Ip;
     }
 
+    private static SessionOptions ConsoleSession()
+    {
+        TimeSpan? pause = MacroTable.TryParsePause(Environment.GetEnvironmentVariable("TCL_MACRO_PAUSE_MS"), out var parsed)
+            ? parsed
+            : null;
+        return new SessionOptions
+        {
+            Log = Console.WriteLine,
+            MacroPause = pause,
+        };
+    }
+
     private static void PrintFound(TvDevice device) =>
         Console.WriteLine($"  [+] 发现: {device.Name}  IP={device.Ip}  MAC={device.WifiMac}");
 
@@ -236,15 +248,22 @@ internal static partial class CliApp
           power
           up down left right ok enter
           back menu home
+          source input          信源键（29）。HDMI 上打开信源面板，桌面上回到上次输入
+          hdmi1                 宏：home，等待 2.5 秒，再 source。回到上次输入
+          tv tv_home launcher   回到 TCL 桌面（home，19）
           vol_up vol_down mute
           ch_up ch_down
           mouse_left mouse_right
+
+        hdmi1 回到的是上次使用的输入。已经在 HDMI1 上再发 hdmi1，会先经过主页再回来。
+        宏忽略 repeat。等待毫秒数可用 TCL_MACRO_PAUSE_MS 覆盖，默认 2500。
 
         环境变量（便于容器）:
           TCL_TV_IP    电视 IP，对应 --ip
           TCL_HOST     Web 监听地址，对应 --host
           TCL_PORT     Web 监听端口，对应 --port
           TCL_NAME     控制端名称，对应 --name
+          TCL_MACRO_PAUSE_MS   宏步骤之间的等待，默认 2500
 
         Home Assistant 插件还会读取 /data/options.json（可用 TCL_OPTIONS_FILE 改路径）。
 

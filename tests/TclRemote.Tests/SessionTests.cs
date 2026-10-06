@@ -123,6 +123,45 @@ public class SessionTests
     }
 
     [Fact]
+    public void Hdmi1WaitsWithTheInjectedClockAndIgnoresRepeat()
+    {
+        using var server = new FakeTvServer();
+        var waits = new List<TimeSpan>();
+        var started = DateTime.UtcNow;
+        using var session = NewSession(
+            server.Port,
+            keepalive: TimeSpan.FromHours(1),
+            wait: waits.Add,
+            macroPause: TimeSpan.FromMilliseconds(1234));
+
+        var outcome = session.Send("hdmi1", "127.0.0.1", 4, clampRepeat: true);
+
+        Assert.True(outcome.Ok, outcome.Error);
+        Assert.Equal(1, outcome.Repeat);
+        Assert.True(DateTime.UtcNow - started < TimeSpan.FromMilliseconds(800), "the macro wait must be injectable");
+        Assert.Equal([TimeSpan.FromMilliseconds(1234)], waits);
+        server.WaitUntil(() => server.Keys.Count >= 2);
+        Assert.Equal(["149>>19", "149>>29"], server.Keys.ToArray());
+    }
+
+    [Fact]
+    public void Hdmi1UsesTheTablePauseWhenItIsNotOverridden()
+    {
+        using var server = new FakeTvServer();
+        var waits = new List<TimeSpan>();
+        var started = DateTime.UtcNow;
+        using var session = NewSession(server.Port, keepalive: TimeSpan.FromHours(1), wait: waits.Add);
+        var outcome = session.Send("hdmi1", "127.0.0.1", 1, clampRepeat: false);
+
+        Assert.True(outcome.Ok, outcome.Error);
+        Assert.True(DateTime.UtcNow - started < TimeSpan.FromMilliseconds(800));
+        Assert.Equal([MacroTable.DefaultPause], waits);
+        server.WaitUntil(() => server.Keys.Count >= 2);
+        Assert.Equal("149>>19", server.Keys.ElementAt(0));
+        Assert.Equal("149>>29", server.Keys.ElementAt(1));
+    }
+
+    [Fact]
     public void HealthySendDoesNotWaitOutTheDeadPeerBudget()
     {
         using var server = new FakeTvServer();
@@ -256,7 +295,13 @@ public class SessionTests
         Assert.Equal(1, server.Handshakes);
     }
 
-    private static RemoteSession NewSession(int port, TimeSpan keepalive, TimeSpan? maxIdle = null, Action<string>? log = null) =>
+    private static RemoteSession NewSession(
+        int port,
+        TimeSpan keepalive,
+        TimeSpan? maxIdle = null,
+        Action<string>? log = null,
+        Action<TimeSpan>? wait = null,
+        TimeSpan? macroPause = null) =>
         new("test", new SessionOptions
         {
             ControlPort = port,
@@ -265,6 +310,8 @@ public class SessionTests
             KeyInterval = TimeSpan.Zero,
             AutoDiscoverTimeout = TimeSpan.FromMilliseconds(200),
             Log = log,
+            Wait = wait,
+            MacroPause = macroPause,
         });
 
     private sealed class PortDrop : IDisposable

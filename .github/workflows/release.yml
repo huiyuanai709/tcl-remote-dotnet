@@ -37,7 +37,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
 
       - name: Publish
-        run: dotnet publish src/TclRemote/TclRemote.csproj -c Release -r ${{ matrix.rid }} -o publish --nologo
+        run: dotnet publish src/TclRemote/TclRemote.csproj -c Release -r ${{ matrix.rid }} --self-contained true -o publish --nologo
 
       - name: Stage asset
         shell: bash

@@ -27,14 +27,15 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
 
       - name: Publish linux-x64
-        run: dotnet publish src/TclRemote/TclRemote.csproj -c Release -r linux-x64 -o "$RUNNER_TEMP/tcl-remote" --nologo
+        run: dotnet publish src/TclRemote/TclRemote.csproj -c Release -r linux-x64 --self-contained true -o "$RUNNER_TEMP/tcl-remote" --nologo
 
       - name: Smoke
         run: |
           set -eu
           bin="$RUNNER_TEMP/tcl-remote/tcl-remote"
           "$bin" --help
-          "$bin" --version
+          "$bin" --version 2>"$RUNNER_TEMP/gc.txt"
+          grep -F 'SatoriGC=true' "$RUNNER_TEMP/gc.txt"
           "$bin" serve --host 127.0.0.1 --port 8765 &
           pid=$!
           trap 'kill "$pid" || true' EXIT

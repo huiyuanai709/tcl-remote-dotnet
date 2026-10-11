@@ -6,6 +6,7 @@ public static class Program
     {
         try
         {
+            GcProbe.WriteStartupLog();
             return CliApp.Run(args);
         }
         catch (CommandException ex)

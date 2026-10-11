@@ -58,8 +58,14 @@ AES-128-CBC，密钥 ASCII `tnscreentnscreen`，IV 为 `12 34 56 78 90 AB CD EF`
 
 ```bash
 dotnet test -c Release
-dotnet publish src/TclRemote/TclRemote.csproj -c Release -r linux-x64 -o out
+dotnet publish src/TclRemote/TclRemote.csproj -c Release -r linux-x64 --self-contained true -o out
 ./out/tcl-remote --help
+```
+
+发布走 Satori GC（SDK `PublishWithSatoriGC` `11.0.0-satori`，对应 `net11.0`）。Native AOT 本身就是自包含，发布命令仍加上 `--self-contained true`。进程启动时向标准错误写一行 `[*] SatoriGC=true` 或 `false`，对应 `GC.GetConfigurationVariables().ContainsKey("SatoriGC")`。例如：
+
+```bash
+./out/tcl-remote --version 2>&1 >/dev/null
 ```
 
 发布 RID：`linux-x64`、`linux-arm64`、`linux-musl-x64`、`linux-musl-arm64`、`win-x64`。musl 包请在 Alpine 里编（见 `tcl-remote/Dockerfile`），不要在 glibc 发行版上交叉编译。
@@ -74,12 +80,12 @@ JSON 使用源生成，工程打开了 trim / AOT 分析，并在应用项目里
 
 ```bash
 # 开发机构建（多阶段，含 SDK）
-docker build -f tcl-remote/Dockerfile -t ghcr.io/huiyuanai709/tcl-remote-amd64:1.0.2 .
+docker build -f tcl-remote/Dockerfile -t ghcr.io/huiyuanai709/tcl-remote-amd64:1.0.3 .
 
 # 只用发布页上下载的 musl 二进制
 cd tcl-remote
-curl -fL -o tcl-remote https://github.com/huiyuanai709/tcl-remote-dotnet/releases/download/v1.0.2/tcl-remote-linux-musl-arm64
-docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.2 .
+curl -fL -o tcl-remote https://github.com/huiyuanai709/tcl-remote-dotnet/releases/download/v1.0.3/tcl-remote-linux-musl-arm64
+docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.3 .
 ```
 
 打 `v*` tag 时，GitHub Actions 会在对应架构的托管 runner 上发布上述二进制，并推送 `ghcr.io/huiyuanai709/tcl-remote-amd64` 与 `tcl-remote-aarch64`。

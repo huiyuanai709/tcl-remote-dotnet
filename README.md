@@ -58,8 +58,14 @@ AES-128-CBC，密钥 ASCII `tnscreentnscreen`，IV 为 `12 34 56 78 90 AB CD EF`
 
 ```bash
 dotnet test -c Release
-dotnet publish src/TclRemote/TclRemote.csproj -c Release -r linux-x64 -o out
+dotnet publish src/TclRemote/TclRemote.csproj -c Release -r linux-x64 --self-contained true -o out
 ./out/tcl-remote --help
+```
+
+发布走 Satori GC（SDK `PublishWithSatoriGC` `11.0.0-satori`，对应 `net11.0`）。Native AOT 本身就是自包含，发布命令仍加上 `--self-contained true`。进程启动时向标准错误写一行 `[*] SatoriGC=true` 或 `false`，对应 `GC.GetConfigurationVariables().ContainsKey("SatoriGC")`。例如：
+
+```bash
+./out/tcl-remote --version 2>&1 >/dev/null
 ```
 
 发布 RID：`linux-x64`、`linux-arm64`、`linux-musl-x64`、`linux-musl-arm64`、`win-x64`。musl 包请在 Alpine 里编（见 `tcl-remote/Dockerfile`），不要在 glibc 发行版上交叉编译。

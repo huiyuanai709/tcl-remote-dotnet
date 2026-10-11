@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3
+
+- Native AOT 发布启用 Satori GC（SDK `PublishWithSatoriGC` `11.0.0-satori`）。发布命令加上 `--self-contained true`。进程启动时向标准错误写 `[*] SatoriGC=true`，对应 `GC.GetConfigurationVariables().ContainsKey("SatoriGC")`。
+
 ## 1.0.2
 
 - 电视关机或网络断开后，`/api/send` 和 CLI `send` 不再把写进半开 TCP 连接的按键当成成功。发送前检查对端是否已关闭，发送后等待这段数据被确认；对端不应答时在几秒内返回错误（HTTP 500，`ok: false`）。保活发现电视不可达后断开并停止，不会空转或反复打日志。

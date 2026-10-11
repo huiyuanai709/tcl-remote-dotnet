@@ -21,5 +21,5 @@ internal static class Protocol
     public static readonly TimeSpan PeerAckTimeout = TimeSpan.FromSeconds(2);
     public static readonly TimeSpan ReconnectTimeout = TimeSpan.FromSeconds(2);
 
-    public const string AppVersion = "1.0.2";
+    public const string AppVersion = "1.0.3";
 }

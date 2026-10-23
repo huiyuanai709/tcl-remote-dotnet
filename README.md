@@ -93,3 +93,8 @@ docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1
 ## 许可
 
 [MIT](LICENSE)。Copyright (c) 2026 huiyuanai709。协议实现与 `remote.html` 源自 jarvis2f/tcl-remote，Copyright (c) 2026 jarvis2f，同样为 MIT。
+
+
+## Related
+
+- [CleanYourTV-nohome](https://github.com/huiyuanai709/CleanYourTV-nohome) — TCL fork of CleanYourTV that drops `category.HOME` for MultiScreen sideload and uses accessibility for Home. Companion launcher for the same LAN TV setup.

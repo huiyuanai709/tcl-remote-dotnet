@@ -30,8 +30,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-          dotnet-quality: preview
-
       - name: Native AOT prerequisites
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev

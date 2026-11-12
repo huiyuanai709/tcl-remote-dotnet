@@ -54,7 +54,7 @@ AES-128-CBC，密钥 ASCII `tnscreentnscreen`，IV 为 `12 34 56 78 90 AB CD EF`
 
 ## 构建
 
-需要 .NET SDK 11（`global.json` 写的是 `11.0.100-rc.1`，`rollForward: latestMajor`，RC 和以后的 GA 都可以）以及 Native AOT 的本机工具链：Linux 上是 `clang` 和 `zlib1g-dev`，Windows 上是 VS C++ 生成工具。
+需要 .NET SDK 11（`global.json` 钉在 `11.0.100`，`rollForward: latestFeature`）以及 Native AOT 的本机工具链：Linux 上是 `clang` 和 `zlib1g-dev`，Windows 上是 VS C++ 生成工具。
 
 ```bash
 dotnet test -c Release

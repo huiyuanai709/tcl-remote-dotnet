@@ -25,7 +25,7 @@ tcl-remote serve --ip 192.168.5.9 --host 127.0.0.1 --port 8765
 
 `source` 在 HDMI 上打开电视的信源选择，在 TCL 桌面上则直接回到上次的输入。`hdmi1` 回到的也是上次使用的输入（这台 55F8 只接了 HDMI1，所以就是 HDMI1）。已经在 HDMI1 上再按 `hdmi1`，会先回到主页再进信源。`tv` 从 HDMI 回到 TCL 桌面。宏忽略 `repeat`。步骤之间的等待默认 2500 ms，可用环境变量 `TCL_MACRO_PAUSE_MS` 修改。
 
-环境变量：`TCL_TV_IP`、`TCL_HOST`、`TCL_PORT`、`TCL_NAME`。Home Assistant 插件还会读 `/data/options.json`（路径可用 `TCL_OPTIONS_FILE` 覆盖）。
+环境变量：`TCL_TV_IP`、`TCL_HOST`、`TCL_PORT`、`TCL_NAME`。`TCL_TV_IP`（插件选项 `tv_ip`）是上次已知地址：还能控就继续用，控不了就按发现应答里的 Wi-Fi 或蓝牙 MAC 跟随同一台电视，DHCP 改地址后不用改配置。Home Assistant 插件还会读 `/data/options.json`（路径可用 `TCL_OPTIONS_FILE` 覆盖）。
 
 `serve` 默认只听 `127.0.0.1:8765`。需要局域网访问时再加 `--host 0.0.0.0`，并且只在可信网络里这样做。
 

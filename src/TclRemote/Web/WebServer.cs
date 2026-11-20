@@ -48,10 +48,7 @@ internal static class WebServer
             if (!TryParseTimeout(timeout, out var seconds, out var error))
                 return Error(400, error ?? "无效的 timeout");
 
-            var devices = DiscoveryClient.Scan(TimeSpan.FromSeconds(seconds));
-            if (devices.Count > 0 && string.IsNullOrWhiteSpace(session.DefaultIp))
-                session.DefaultIp = devices[0].Ip;
-
+            var devices = session.Discover(TimeSpan.FromSeconds(seconds));
             return Results.Json(new DiscoverResponse
             {
                 Ok = true,

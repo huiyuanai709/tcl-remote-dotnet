@@ -65,6 +65,7 @@ internal static partial class CliApp
 
         var name = AppSettings.ResolveName(cli, "TCL Remote");
         using var session = new RemoteSession(name, ConsoleSession());
+        session.DefaultIp = ip;
         var outcome = session.Send(cli.Key, ip, cli.Repeat, clampRepeat: false);
         if (!outcome.Ok)
         {
@@ -72,6 +73,8 @@ internal static partial class CliApp
             return 1;
         }
 
+        if (!string.IsNullOrWhiteSpace(outcome.Ip) && !string.Equals(outcome.Ip, ip, StringComparison.Ordinal))
+            Console.WriteLine($"[*] 电视地址已更新: {outcome.Ip}");
         var suffix = outcome.Repeat > 1 ? $" x{outcome.Repeat}" : "";
         Console.WriteLine($"[+] 已发送: {cli.Key}{suffix}");
         return 0;
@@ -85,11 +88,18 @@ internal static partial class CliApp
 
         var name = AppSettings.ResolveName(cli, "TCL Remote");
         using var session = new RemoteSession(name, ConsoleSession());
+        session.DefaultIp = ip;
         if (!session.TryConnect(ip, out var connectError))
         {
             Console.Error.WriteLine($"[!] {connectError}");
             Console.Error.WriteLine("[!] 连接失败，请检查电视 IP、是否开机，以及 TCP 6553 是否可达");
             return 1;
+        }
+
+        if (!string.IsNullOrWhiteSpace(session.DefaultIp) && !string.Equals(session.DefaultIp, ip, StringComparison.Ordinal))
+        {
+            ip = session.DefaultIp ?? ip;
+            Console.WriteLine($"[*] 电视地址已更新: {ip}");
         }
 
         Console.WriteLine(ShellHelp);
@@ -134,7 +144,7 @@ internal static partial class CliApp
                 if (level == 0)
                     continue;
                 var key = level > 0 ? "vol_up" : "vol_down";
-                Report(session.Send(key, ip, Math.Abs(level), clampRepeat: false));
+                Report(Track(session.Send(key, ip, Math.Abs(level), clampRepeat: false)));
                 continue;
             }
 
@@ -149,10 +159,21 @@ internal static partial class CliApp
                 }
             }
 
-            Report(session.Send(parts[0], ip, repeat, clampRepeat: false));
+            Report(Track(session.Send(parts[0], ip, repeat, clampRepeat: false)));
         }
 
         return 0;
+
+        SendOutcome Track(SendOutcome outcome)
+        {
+            if (outcome.Ok && !string.IsNullOrWhiteSpace(outcome.Ip) && !string.Equals(outcome.Ip, ip, StringComparison.Ordinal))
+            {
+                ip = outcome.Ip ?? ip;
+                Console.WriteLine($"[*] 电视地址已更新: {ip}");
+            }
+
+            return outcome;
+        }
     }
 
     private static int Serve(ParsedCli cli)
@@ -259,7 +280,7 @@ internal static partial class CliApp
         宏忽略 repeat。等待毫秒数可用 TCL_MACRO_PAUSE_MS 覆盖，默认 2500。
 
         环境变量（便于容器）:
-          TCL_TV_IP    电视 IP，对应 --ip
+          TCL_TV_IP    电视上次已知 IP，对应 --ip。连不上时按发现 MAC 跟随同一台
           TCL_HOST     Web 监听地址，对应 --host
           TCL_PORT     Web 监听端口，对应 --port
           TCL_NAME     控制端名称，对应 --name

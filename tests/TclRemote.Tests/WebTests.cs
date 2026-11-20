@@ -41,6 +41,7 @@ public class WebTests
         var page = await http.GetStringAsync("/");
         Assert.Contains("data-key=\"vol_up\"", page);
         Assert.Contains("/api/send", page);
+        Assert.Contains("if (data.ip && data.ip !== ip) ipInput.value = data.ip;", page);
         Assert.Contains("信号源", page);
         var power = page.IndexOf("data-key=\"power\"", StringComparison.Ordinal);
         var source = page.IndexOf("data-key=\"source\"", StringComparison.Ordinal);

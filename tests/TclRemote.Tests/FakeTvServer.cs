@@ -16,11 +16,11 @@ internal sealed class FakeTvServer : IDisposable
     private int _handshakes;
     private int _emptyFrames;
 
-    public FakeTvServer(int algorithmType = 1, bool encryptStatus = true)
+    public FakeTvServer(int algorithmType = 1, bool encryptStatus = true, IPAddress? address = null, int port = 0)
     {
         AlgorithmType = algorithmType;
         EncryptStatus = encryptStatus;
-        _listener = new TcpListener(IPAddress.Loopback, 0);
+        _listener = new TcpListener(address ?? IPAddress.Loopback, port);
         _listener.Start();
         Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         _acceptLoop = Task.Run(AcceptLoop);

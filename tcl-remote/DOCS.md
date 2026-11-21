@@ -43,7 +43,7 @@ chmod +x tcl-remote
 docker build -f Dockerfile.prebuilt -t ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.4 .
 ```
 
-把打好的镜像导入 HA 所在机器的 Docker 后，标签要和 `config.yaml` 里的 `image` 一致，监督器会优先用本地镜像。
+把打好的镜像导入 HA 所在机器的 Docker 后，标签必须是 `config.yaml` 里的 `image` 加上 `version`（例如 `ghcr.io/huiyuanai709/tcl-remote-aarch64:1.0.4`）。`image` 本身不能带标签，监督器会用 `version` 当标签去拉，并优先使用已经导入的本地镜像。
 
 ## HTTP API
 

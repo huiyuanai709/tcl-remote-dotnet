@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.4
+
+- `tv_ip` 仍是上次已知地址。这个地址还能控就继续用，不重新扫描。连不上时按发现应答里的 Wi-Fi MAC（没有则用蓝牙 MAC）重新找到同一台电视并改用新地址，DHCP 变更后不用改配置。
+- 留空 `tv_ip` 时，第一次发按键仍自动选择第一台设备并记住它的 MAC；之后地址变化跟随这一台，而不是再次取扫描结果里的第一台。
+- 重新发现没有设备、只有别的 MAC，或有多台又还没有记住 MAC 时，不猜测目标，按键返回错误。被替换过的旧地址仍会指到当前地址。
+
 ## 1.0.3
 
 - Native AOT 发布启用 Satori GC（SDK `PublishWithSatoriGC` `11.0.0-satori`）。发布命令加上 `--self-contained true`。进程启动时向标准错误写 `[*] SatoriGC=true`，对应 `GC.GetConfigurationVariables().ContainsKey("SatoriGC")`。

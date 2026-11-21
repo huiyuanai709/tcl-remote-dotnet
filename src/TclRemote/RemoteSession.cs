@@ -9,6 +9,9 @@ internal sealed class SessionOptions
     public TimeSpan AutoDiscoverTimeout { get; init; } = TimeSpan.FromSeconds(2);
     public Action<string>? Log { get; init; }
 
+    // Null uses UDP discovery. Tests supply a fixed reply list.
+    public Func<TimeSpan, IReadOnlyList<TvDevice>>? DiscoverDevices { get; init; }
+
     // Null uses the pause written in the macro table (hdmi1 defaults to 2500 ms).
     public TimeSpan? MacroPause { get; init; }
 
@@ -31,10 +34,12 @@ internal sealed class RemoteSession : IDisposable
     private readonly SessionOptions _options;
     private readonly object _mapLock = new();
     private readonly Dictionary<string, TvLink> _links = new(StringComparer.Ordinal);
+    private readonly List<string> _staleIps = [];
     private readonly PeriodicTimer _timer;
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _keepaliveLoop;
     private string? _defaultIp;
+    private TvIdentity? _identity;
     private int _disposed;
 
     public RemoteSession(string clientName, SessionOptions? options = null)
@@ -56,20 +61,51 @@ internal sealed class RemoteSession : IDisposable
         }
         set
         {
+            var next = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
             lock (_mapLock)
-                _defaultIp = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            {
+                if (SameIp(_defaultIp, next))
+                    return;
+                _defaultIp = next;
+                // A newly configured address is a different hint, not proof of the old set.
+                _identity = null;
+                _staleIps.Clear();
+            }
+        }
+    }
+
+    internal string? RememberedMac
+    {
+        get
+        {
+            lock (_mapLock)
+                return _identity?.Display;
         }
     }
 
     public bool TryConnect(string ip, out string? error)
     {
-        var link = GetLink(ip);
-        lock (link.Gate)
+        var outcome = Transmit("", ip, 1, target =>
         {
-            var ok = link.TryConnect();
-            error = ok ? null : link.LastError ?? "连接失败";
-            return ok;
-        }
+            var link = GetLink(target);
+            bool ok;
+            lock (link.Gate)
+                ok = link.TryConnect();
+            return ok
+                ? new WriteResult(true, false, null)
+                : new WriteResult(false, true, link.LastError ?? "连接失败");
+        });
+        error = outcome.Ok ? null : outcome.Error;
+        return outcome.Ok;
+    }
+
+    public IReadOnlyList<TvDevice> Discover(TimeSpan timeout)
+    {
+        if (timeout <= TimeSpan.Zero)
+            timeout = TimeSpan.FromMilliseconds(500);
+        var found = Scan(timeout);
+        Adopt(found);
+        return found.ToList();
     }
 
     public SendOutcome Send(string? key, string? ip, int repeat, bool clampRepeat)
@@ -87,18 +123,16 @@ internal sealed class RemoteSession : IDisposable
         if (effective < 1)
             return SendOutcome.Fail(400, "repeat 必须大于 0", key, repeat);
 
-        if (!TryPickTarget(ip, key, effective, out var target, out var failure))
-            return failure;
-
-        var link = GetLink(target);
-        bool ok;
-        lock (link.Gate)
-            ok = link.SendKey(code, effective, _options.KeyInterval);
-
-        if (!ok)
-            return SendOutcome.Fail(500, link.LastError ?? "发送失败，连接已重置", key, effective, target);
-
-        return SendOutcome.Success(target, key, effective);
+        return Transmit(key, ip, effective, target =>
+        {
+            var link = GetLink(target);
+            bool ok;
+            lock (link.Gate)
+                ok = link.SendKey(code, effective, _options.KeyInterval);
+            return ok
+                ? new WriteResult(true, false, null)
+                : new WriteResult(false, true, link.LastError ?? "发送失败，连接已重置");
+        });
     }
 
     private SendOutcome SendMacro(string key, string? ip, int repeat, MacroStep[] steps)
@@ -107,26 +141,32 @@ internal sealed class RemoteSession : IDisposable
             return SendOutcome.Fail(400, "repeat 必须大于 0", key, repeat);
 
         // Macros run once. repeat does not replay the sequence.
-        if (!TryPickTarget(ip, key, 1, out var target, out var failure))
-            return failure;
-
-        var link = GetLink(target);
-        lock (link.Gate)
+        // A step that already landed is not sent again if the set then disappears.
+        var progressed = false;
+        return Transmit(key, ip, 1, target =>
         {
-            foreach (var step in steps)
+            if (progressed)
+                return new WriteResult(false, false, "发送失败，连接已重置");
+
+            var link = GetLink(target);
+            lock (link.Gate)
             {
-                if (step.PauseBefore > TimeSpan.Zero)
+                foreach (var step in steps)
                 {
-                    _options.Log?.Invoke($"[*] 宏 {key}：等待 {step.PauseBefore.TotalMilliseconds:0} ms 后发送 {step.Key}");
-                    Wait(step.PauseBefore);
+                    if (step.PauseBefore > TimeSpan.Zero)
+                    {
+                        _options.Log?.Invoke($"[*] 宏 {key}：等待 {step.PauseBefore.TotalMilliseconds:0} ms 后发送 {step.Key}");
+                        Wait(step.PauseBefore);
+                    }
+
+                    if (!link.SendKey(step.Code, 1, _options.KeyInterval))
+                        return new WriteResult(false, !progressed, link.LastError ?? "发送失败，连接已重置");
+                    progressed = true;
                 }
-
-                if (!link.SendKey(step.Code, 1, _options.KeyInterval))
-                    return SendOutcome.Fail(500, link.LastError ?? "发送失败，连接已重置", key, 1, target);
             }
-        }
 
-        return SendOutcome.Success(target, key, 1);
+            return new WriteResult(true, false, null);
+        });
     }
 
     private void Wait(TimeSpan delay)
@@ -140,27 +180,194 @@ internal sealed class RemoteSession : IDisposable
         Thread.Sleep(delay);
     }
 
-    private bool TryPickTarget(string? ip, string key, int repeat, out string target, out SendOutcome failure)
+    // Try the preferred address first. Scan only when it is missing or the control
+    // connection fails, then keep the same MAC (or the only answering set, if no
+    // MAC is known yet). An explicit address that is not the preferred one is left
+    // alone so a one-off target is not rewritten.
+    private SendOutcome Transmit(string key, string? requestIp, int repeat, Func<string, WriteResult> write)
+    {
+        if (!TryPickTarget(requestIp, key, repeat, out var target, out var failure))
+            return failure;
+
+        var first = write(target);
+        if (first.Ok)
+            return SendOutcome.Success(target, key, repeat);
+
+        if (!first.CanFollow || !IsPreferredRequest(requestIp))
+            return SendOutcome.Fail(500, first.Error ?? "发送失败，连接已重置", key, repeat, target);
+
+        var found = Scan(_options.AutoDiscoverTimeout);
+        TvIdentity? identity;
+        lock (_mapLock)
+            identity = _identity;
+
+        var choice = TvFollow.ChooseAfterFailure(found, identity, target);
+        if (!choice.Found || choice.Device is null)
+        {
+            var message = choice.KeepTransportError
+                ? first.Error ?? "发送失败，连接已重置"
+                : choice.Error ?? first.Error ?? "发送失败，连接已重置";
+            return SendOutcome.Fail(500, message, key, repeat, target);
+        }
+
+        var moved = choice.Device;
+        Remember(moved, target, announce: true);
+        var second = write(moved.Ip);
+        if (!second.Ok)
+            return SendOutcome.Fail(500, second.Error ?? "发送失败，连接已重置", key, repeat, moved.Ip);
+
+        return SendOutcome.Success(moved.Ip, key, repeat);
+    }
+
+    private bool TryPickTarget(string? requestIp, string key, int repeat, out string target, out SendOutcome failure)
     {
         target = "";
         failure = default;
-        var chosen = string.IsNullOrWhiteSpace(ip) ? DefaultIp : ip.Trim();
-        if (string.IsNullOrWhiteSpace(chosen))
+        var requested = string.IsNullOrWhiteSpace(requestIp) ? null : requestIp.Trim();
+        string? chosen;
+        TvIdentity? identity;
+        lock (_mapLock)
         {
-            var found = DiscoveryClient.Scan(_options.AutoDiscoverTimeout);
-            if (found.Count == 0)
-            {
-                failure = SendOutcome.Fail(500, "未指定电视 IP，且自动发现没有找到设备", key, repeat);
-                return false;
-            }
-
-            chosen = found[0].Ip;
-            if (string.IsNullOrWhiteSpace(DefaultIp))
-                DefaultIp = chosen;
+            identity = _identity;
+            if (requested is null || SameIp(requested, _defaultIp) || _staleIps.Contains(requested))
+                chosen = _defaultIp;
+            else
+                chosen = requested;
         }
 
-        target = chosen;
+        if (!string.IsNullOrWhiteSpace(chosen))
+        {
+            target = chosen;
+            return true;
+        }
+
+        var found = Scan(_options.AutoDiscoverTimeout);
+        var choice = TvFollow.PickInitial(found, identity);
+        if (!choice.Found || choice.Device is null)
+        {
+            failure = SendOutcome.Fail(500, choice.Error ?? "未指定电视 IP，且自动发现没有找到设备", key, repeat);
+            return false;
+        }
+
+        Remember(choice.Device, previousIp: null, announce: true);
+        target = choice.Device.Ip;
         return true;
+    }
+
+    private bool IsPreferredRequest(string? requestIp)
+    {
+        if (string.IsNullOrWhiteSpace(requestIp))
+            return true;
+
+        var requested = requestIp.Trim();
+        lock (_mapLock)
+            return SameIp(_defaultIp, requested) || _staleIps.Contains(requested);
+    }
+
+    private IReadOnlyList<TvDevice> Scan(TimeSpan timeout)
+    {
+        if (_options.DiscoverDevices is not { } injected)
+            return DiscoveryClient.Scan(timeout);
+
+        return injected(timeout) ?? [];
+    }
+
+    // A manual or startup scan. The preferred address stays put when it is still
+    // in the reply. A remembered MAC found at exactly one new address is adopted.
+    private void Adopt(IReadOnlyList<TvDevice> found)
+    {
+        if (found.Count == 0)
+            return;
+
+        TvDevice? selected = null;
+        string? replaced = null;
+        lock (_mapLock)
+        {
+            var identity = _identity;
+            if (identity is not null)
+            {
+                if (!string.IsNullOrWhiteSpace(_defaultIp))
+                {
+                    var staying = found.FirstOrDefault(device =>
+                        SameIp(device.Ip, _defaultIp) && identity.Matches(device));
+                    if (staying is not null)
+                    {
+                        _identity = TvIdentity.From(staying) ?? identity;
+                        return;
+                    }
+                }
+
+                var matches = found.Where(identity.Matches).ToList();
+                if (matches.Count != 1)
+                    return;
+                selected = matches[0];
+                replaced = _defaultIp;
+            }
+            else if (!string.IsNullOrWhiteSpace(_defaultIp))
+            {
+                var staying = found.FirstOrDefault(device => SameIp(device.Ip, _defaultIp));
+                if (staying is not null)
+                {
+                    _identity = TvIdentity.From(staying);
+                    return;
+                }
+
+                if (found.Count != 1)
+                    return;
+                selected = found[0];
+                replaced = _defaultIp;
+            }
+            else
+            {
+                selected = found[0];
+            }
+        }
+
+        if (selected is not null)
+            Remember(selected, replaced, announce: true);
+    }
+
+    private void Remember(TvDevice device, string? previousIp, bool announce)
+    {
+        string? line = null;
+        lock (_mapLock)
+        {
+            var nextIp = device.Ip.Trim();
+            if (nextIp.Length == 0)
+                return;
+
+            var previous = _defaultIp;
+            if (!string.IsNullOrWhiteSpace(previousIp) && !SameIp(previousIp, nextIp))
+                AddStale(previousIp.Trim());
+            if (!string.IsNullOrWhiteSpace(previous) && !SameIp(previous, nextIp))
+                AddStale(previous);
+            _defaultIp = nextIp;
+            _staleIps.Remove(nextIp);
+            var ident = TvIdentity.From(device);
+            if (ident is not null)
+                _identity = ident;
+
+            if (announce && !SameIp(previous, nextIp))
+            {
+                var mac = _identity?.Display;
+                var macText = string.IsNullOrEmpty(mac) ? "" : $" MAC {mac}";
+                var name = string.IsNullOrWhiteSpace(device.Name) ? "TCL" : device.Name.Trim();
+                line = string.IsNullOrWhiteSpace(previous) && string.IsNullOrWhiteSpace(previousIp)
+                    ? $"[*] 使用 {name} {nextIp}{macText}"
+                    : $"[*] 电视地址 {previousIp ?? previous} 改为 {nextIp}{macText}";
+            }
+        }
+
+        if (line is not null)
+            _options.Log?.Invoke(line);
+    }
+
+    private void AddStale(string ip)
+    {
+        _staleIps.Remove(ip);
+        _staleIps.Add(ip);
+        while (_staleIps.Count > 8)
+            _staleIps.RemoveAt(0);
     }
 
     public void Dispose()
@@ -234,4 +441,9 @@ internal sealed class RemoteSession : IDisposable
             // Shutting down.
         }
     }
+
+    private static bool SameIp(string? left, string? right) =>
+        string.Equals(left?.Trim(), right?.Trim(), StringComparison.Ordinal);
+
+    private readonly record struct WriteResult(bool Ok, bool CanFollow, string? Error);
 }

@@ -408,7 +408,7 @@
           method: "POST",
           body: JSON.stringify({ key, repeat, ip })
         });
-        if (data.ip && !ipInput.value.trim()) ipInput.value = data.ip;
+        if (data.ip && data.ip !== ip) ipInput.value = data.ip;
         setStatus("OK", "ok");
         log(`${data.ip || ip} ← ${key}${repeat > 1 ? ` x${repeat}` : ""}`);
       } catch (error) {
